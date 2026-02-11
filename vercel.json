@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "src": "/api/metrics",
+      "dest": "/api/metrics.js"
+    },
+    {
+      "src": "/",
+      "dest": "/public/index..html"
+    }
+  ]
+}

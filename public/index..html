@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Client Metrics - Minimal</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;max-width:880px;margin:28px auto;padding:0 16px;color:#111}
+    h1{font-size:20px;margin-bottom:6px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .card{padding:12px;border:1px solid #e6e6e6;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.03)}
+    table{width:100%;border-collapse:collapse}
+    td{padding:6px 4px;vertical-align:top}
+    td.key{width:38%;color:#333;font-weight:600}
+    pre{white-space:pre-wrap;word-break:break-word;margin:0}
+    .controls{margin:10px 0 18px}
+    button{padding:8px 10px;border-radius:6px;border:1px solid #ccc;background:#fafafa;cursor:pointer}
+    footer{margin-top:18px;font-size:13px;color:#666}
+  </style>
+</head>
+<body>
+  <h1>Client & Network Metrics (minimal UI)</h1>
+  <div class="controls">
+    <button id="refresh">Refresh</button>
+    <button id="copy">Copy JSON</button>
+  </div>
+
+  <div id="result" class="grid">
+    <div class="card">
+      <h3>IP & Geo</h3>
+      <table>
+        <tr><td class="key">IP (server-observed)</td><td id="ip">-</td></tr>
+        <tr><td class="key">IP version</td><td id="ipv">-</td></tr>
+        <tr><td class="key">City, Region, Country</td><td id="location">-</td></tr>
+        <tr><td class="key">Latitude, Longitude</td><td id="coords">-</td></tr>
+        <tr><td class="key">Timezone</td><td id="tz">-</td></tr>
+        <tr><td class="key">ISP / Org</td><td id="org">-</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Browser & Device</h3>
+      <table>
+        <tr><td class="key">User Agent</td><td id="ua">-</td></tr>
+        <tr><td class="key">Browser</td><td id="browser">-</td></tr>
+        <tr><td class="key">OS</td><td id="os">-</td></tr>
+        <tr><td class="key">Device type</td><td id="device">-</td></tr>
+        <tr><td class="key">Screen</td><td id="screen">-</td></tr>
+        <tr><td class="key">Language</td><td id="lang">-</td></tr>
+        <tr><td class="key">Timezone (client)</td><td id="tz_client">-</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Network & Performance Hints</h3>
+      <table>
+        <tr><td class="key">Effective connection</td><td id="effectiveConn">-</td></tr>
+        <tr><td class="key">Downlink (Mb/s)</td><td id="downlink">-</td></tr>
+        <tr><td class="key">RTT estimate (ms)</td><td id="rtt">-</td></tr>
+        <tr><td class="key">Save data</td><td id="saveData">-</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Raw / Debug</h3>
+      <pre id="raw">-</pre>
+    </div>
+  </div>
+
+  <footer>
+    Note: geolocation uses a third-party IP->geo service from the server. For production use a paid / on-prem GeoIP DB.
+  </footer>
+
+<script>
+const API_BASE = window.location.origin;
+
+async function fetchMetrics() {
+  const resp = await fetch(`${API_BASE}/api/metrics`);
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error('API error: ' + t);
+  }
+  return resp.json();
+}
+
+function detectDevice(ua) {
+  ua = (ua || '').toLowerCase();
+  if (/mobile|iphone|android|blackberry|iemobile|opera mini/.test(ua)) return 'Mobile';
+  if (/tablet|ipad|playbook|silk/.test(ua)) return 'Tablet';
+  return 'Desktop / Laptop';
+}
+
+function detectBrowser(ua) {
+  ua = (ua||'').toLowerCase();
+  if (ua.includes('edg/')) return 'Microsoft Edge';
+  if (ua.includes('opr/') || ua.includes('opera')) return 'Opera';
+  if (ua.includes('chrome') && !ua.includes('edg/') && !ua.includes('opr/')) return 'Chrome';
+  if (ua.includes('safari') && !ua.includes('chrome')) return 'Safari';
+  if (ua.includes('firefox')) return 'Firefox';
+  if (ua.includes('msie') || ua.includes('trident')) return 'Internet Explorer';
+  return 'Unknown';
+}
+
+function detectOS(ua) {
+  ua = (ua||'').toLowerCase();
+  if (ua.includes('windows nt')) return 'Windows';
+  if (ua.includes('mac os') || ua.includes('macintosh')) return 'macOS';
+  if (ua.includes('android')) return 'Android';
+  if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) return 'iOS';
+  if (ua.includes('linux')) return 'Linux';
+  return 'Unknown';
+}
+
+function getConnectionInfo() {
+  const nav = navigator;
+  const c = nav.connection || nav.mozConnection || nav.webkitConnection || {};
+  return {
+    effectiveType: c.effectiveType || null,
+    downlink: c.downlink || null,
+    rtt: c.rtt || null,
+    saveData: c.saveData || false
+  };
+}
+
+function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text ?? '-'; }
+
+async function render() {
+  try {
+    const m = await fetchMetrics();
+    setText('ip', m.effective_ip || m.ip || m.geo.ip || '-');
+    setText('ipv', m.ip_version || '-');
+
+    const geo = m.geo || {};
+    const city = geo.city || geo.region || '';
+    const country = geo.country_name || geo.country || '';
+    setText('location', [city, geo.region, country].filter(Boolean).join(', ') || '-');
+    const lat = geo.latitude || geo.lat || '';
+    const lon = geo.longitude || geo.lon || '';
+    setText('coords', (lat && lon) ? `${lat}, ${lon}` : '-');
+    setText('tz', geo.timezone || geo.utc_offset || '-');
+    setText('org', geo.org || geo.org_name || '-');
+
+    const ua = navigator.userAgent;
+    setText('ua', ua);
+    setText('browser', detectBrowser(ua));
+    setText('os', detectOS(ua));
+    setText('device', detectDevice(ua));
+    setText('screen', `${screen.width} x ${screen.height} @ ${window.devicePixelRatio || 1}x`);
+    setText('lang', navigator.language || '-');
+    setText('tz_client', Intl.DateTimeFormat().resolvedOptions().timeZone || '-');
+
+    const conn = getConnectionInfo();
+    setText('effectiveConn', conn.effectiveType || '-');
+    setText('downlink', conn.downlink != null ? conn.downlink : '-');
+    setText('rtt', conn.rtt != null ? conn.rtt : '-');
+    setText('saveData', conn.saveData ? 'yes' : 'no');
+
+    const raw = {
+      server: m,
+      client: {
+        ua,
+        language: navigator.language,
+        screen: { w: screen.width, h: screen.height, dpr: window.devicePixelRatio },
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        connection: conn,
+        platform: navigator.platform
+      }
+    };
+    document.getElementById('raw').textContent = JSON.stringify(raw, null, 2);
+  } catch (err) {
+    document.getElementById('raw').textContent = 'Error: ' + err.message;
+  }
+}
+
+document.getElementById('refresh').addEventListener('click', render);
+document.getElementById('copy').addEventListener('click', () => {
+  const txt = document.getElementById('raw').textContent;
+  navigator.clipboard?.writeText(txt).then(()=> alert('Copied'), ()=> alert('Copy failed'));
+});
+
+render();
+</script>
+</body>
+</html>

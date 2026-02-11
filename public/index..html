@@ -83,6 +83,13 @@ async function fetchMetrics() {
   return resp.json();
 }
 
+async function fetchGeoForIp(ip) {
+  if (!ip) return null;
+  const resp = await fetch(`https://ipapi.co/${encodeURIComponent(ip)}/json/`);
+  if (!resp.ok) return null;
+  return resp.json();
+}
+
 function detectDevice(ua) {
   ua = (ua || '').toLowerCase();
   if (/mobile|iphone|android|blackberry|iemobile|opera mini/.test(ua)) return 'Mobile';
@@ -127,17 +134,22 @@ function setText(id, text) { const el = document.getElementById(id); if (el) el.
 async function render() {
   try {
     const m = await fetchMetrics();
-    setText('ip', m.effective_ip || m.ip || m.geo.ip || '-');
+    const displayIp = m.effective_ip || m.ip || (m.geo && m.geo.ip) || '-';
+    setText('ip', displayIp);
     setText('ipv', m.ip_version || '-');
 
-    const geo = m.geo || {};
+    let geo = m.geo || {};
+    if (geo && geo.error) {
+      const clientGeo = await fetchGeoForIp(m.effective_ip || m.ip);
+      if (clientGeo && !clientGeo.error) geo = clientGeo;
+    }
     const city = geo.city || geo.region || '';
     const country = geo.country_name || geo.country || '';
     setText('location', [city, geo.region, country].filter(Boolean).join(', ') || '-');
     const lat = geo.latitude || geo.lat || '';
     const lon = geo.longitude || geo.lon || '';
     setText('coords', (lat && lon) ? `${lat}, ${lon}` : '-');
-    setText('tz', geo.timezone || geo.utc_offset || '-');
+    setText('tz', geo.timezone.id   || geo.utc_offset || '-');
     setText('org', geo.org || geo.org_name || '-');
 
     const ua = navigator.userAgent;
